@@ -52,7 +52,10 @@ const parseExcelFile = async (file) => {
         if (currentOutlet) {
             // Check for screen headers
             if (row[1] && row[1].toString().toLowerCase().includes('screen')) {
-                currentScreens = row.filter(Boolean).map(screen => screen.trim());
+                currentScreens = row
+                    .filter(cell => cell != null && cell !== "")
+                    .map(screen => String(screen).trim());
+                
                 currentScreens.forEach(screen => {
                     if (!menuItems[screen]) {
                         menuItems[screen] = {
@@ -67,7 +70,7 @@ const parseExcelFile = async (file) => {
             // Check for categories
             if (row[1] && ['Hot Food', 'Cold Food', 'Drinks', 'Snacks', 'CARD ONLY'].includes(row[1])) {
                 row.forEach((cell, index) => {
-                    if (cell && currentScreens[index]) {
+                    if (cell && currentScreens && currentScreens[index]) {
                         if (menuItems[currentScreens[index]]) {
                             menuItems[currentScreens[index]].category = cell;
                         }
@@ -80,15 +83,17 @@ const parseExcelFile = async (file) => {
             if (currentScreens && row[1] && !row[1].includes('Outlets:')) {
                 // Process pairs of cells (item and price)
                 for (let i = 1; i < row.length; i += 2) {
-                    if (row[i] && row[i + 1]) {
+                    if (row[i] && row[i + 1] !== null && row[i + 1] !== undefined) {
                         const screenIndex = Math.floor((i - 1) / 2);
-                        const screenName = currentScreens[screenIndex];
-                        
-                        if (screenName && menuItems[screenName]) {
-                            menuItems[screenName].items.push({
-                                name: row[i].trim(),
-                                price: row[i + 1]
-                            });
+                        if (currentScreens && currentScreens[screenIndex]) {
+                            const screenName = currentScreens[screenIndex];
+                            
+                            if (screenName && menuItems[screenName]) {
+                                menuItems[screenName].items.push({
+                                    name: String(row[i]).trim(),
+                                    price: row[i + 1]
+                                });
+                            }
                         }
                     }
                 }
@@ -167,6 +172,7 @@ const findStandardPattern = (screens) => {
 };
 
 const isMatchingPattern = (items1, items2) => {
+    if (!items1 || !items2) return false;
     if (items1.length !== items2.length) return false;
     
     return items1.every((item, index) => 
@@ -176,6 +182,8 @@ const isMatchingPattern = (items1, items2) => {
 };
 
 const findDifferences = (standard, actual) => {
+    if (!standard || !actual) return { missing: [], extra: [] };
+
     const standardNames = standard.map(item => `${item.name} ($${item.price})`);
     const actualNames = actual.map(item => `${item.name} ($${item.price})`);
 
