@@ -37,12 +37,12 @@ export const parseExcelFile = async (file) => {
       }
 
       if (row[1] && row[1].toString().toLowerCase().includes('screen')) {
-        currentScreen = row[1];
+        currentScreen = row[1].trim();
         screens[currentScreen] = [];
         console.log(`Found screen: ${currentScreen}`);
       } else if (currentScreen && row[1]) {
         screens[currentScreen].push({
-          item: row[1],
+          item: row[1].trim(),
           price: row[2],
           rowIndex
         });
@@ -67,47 +67,52 @@ export const findDiscrepancies = (screens) => {
       throw new Error('No screen data provided');
     }
 
-    const layoutPatterns = Object.values(screens).map(screen => 
-      screen.map(item => `${item.item}-${item.price}`).join('|')
-    );
+    // Create layout patterns with better error handling
+    const layoutPatterns = Object.entries(screens).map(([screenName, items]) => ({
+      screenName,
+      pattern: items.map(item => `${item.item}-${item.price}`).join('|')
+    }));
 
-    console.log('Layout patterns created');
+    console.log('Layout patterns created:', layoutPatterns.length);
 
-    const standardLayout = _.chain(layoutPatterns)
-      .countBy()
-      .toPairs()
-      .maxBy('[1]')[0]
-      .value();
+    // Find the most common pattern
+    const patternCounts = _.countBy(layoutPatterns, 'pattern');
+    const mostCommonPattern = _.maxBy(Object.entries(patternCounts), ([, count]) => count)?.[0];
+
+    if (!mostCommonPattern) {
+      throw new Error('Could not determine a standard layout pattern');
+    }
 
     console.log('Standard layout identified');
 
-    const discrepancies = [];
-    
-    Object.entries(screens).forEach(([screenName, items]) => {
-      const currentLayout = items.map(item => `${item.item}-${item.price}`).join('|');
-      if (currentLayout !== standardLayout) {
-        const differences = [];
-        const standardItems = standardLayout.split('|');
-        const currentItems = currentLayout.split('|');
+    // Find screens that don't match the most common pattern
+    const discrepancies = layoutPatterns
+      .filter(({ pattern }) => pattern !== mostCommonPattern)
+      .map(({ screenName, pattern }) => {
+        const currentItems = pattern.split('|');
+        const standardItems = mostCommonPattern.split('|');
         
-        currentItems.forEach((item, index) => {
-          if (item !== standardItems[index]) {
+        const differences = [];
+        const maxLength = Math.max(currentItems.length, standardItems.length);
+        
+        for (let i = 0; i < maxLength; i++) {
+          if (currentItems[i] !== standardItems[i]) {
             differences.push({
-              expected: standardItems[index],
-              found: item
+              expected: standardItems[i] || 'missing',
+              found: currentItems[i] || 'missing'
             });
           }
-        });
+        }
 
-        discrepancies.push({
+        return {
           screen: screenName,
           differences
-        });
-      }
-    });
+        };
+      });
 
     return {
       totalScreens: Object.keys(screens).length,
+      standardPattern: mostCommonPattern,
       discrepancies
     };
   } catch (error) {
