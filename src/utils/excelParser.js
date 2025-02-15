@@ -2,7 +2,7 @@
 import * as XLSX from 'xlsx';
 import _ from 'lodash';
 
-export const parseExcelFile = async (file) => {
+const parseExcelFile = async (file) => {
     const workbook = XLSX.read(file, {
         cellStyles: true,
         cellFormulas: true,
@@ -116,7 +116,7 @@ export const parseExcelFile = async (file) => {
     return outlets;
 };
 
-export const analyzeVenues = (venues) => {
+const analyzeVenues = (venues) => {
     return venues.map(venue => {
         // Group screens by category
         const screensByCategory = _.groupBy(venue.screens, 'category');
