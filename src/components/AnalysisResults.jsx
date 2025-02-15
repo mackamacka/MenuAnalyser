@@ -27,36 +27,62 @@ const BaselineOutlet = ({ outlet }) => {
 const OutletComparison = ({ venue, baselineVenue }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
-    const compareMenus = (baselineItems, currentItems) => {
+    const compareMenus = (baselineItems, currentScreens) => {
         const missing = [];
-        const extra = [];
+        const extra = new Map();
         const priceDifferences = [];
 
-        // Create maps for easier comparison
+        // Create map for baseline items
         const baselineMap = new Map(baselineItems.map(item => [item.name, item.price]));
-        const currentMap = new Map(currentItems.map(item => [item.name, item.price]));
 
-        // Find missing and price differences
+        // Process each screen's items
+        currentScreens.forEach(screen => {
+            screen.items.forEach(item => {
+                if (!baselineMap.has(item.name)) {
+                    // If this item is already in our extra items, append the screen
+                    if (extra.has(item.name)) {
+                        const existingEntry = extra.get(item.name);
+                        extra.set(item.name, {
+                            ...existingEntry,
+                            screens: [...existingEntry.screens, screen.name],
+                            price: item.price
+                        });
+                    } else {
+                        // First time seeing this extra item
+                        extra.set(item.name, {
+                            screens: [screen.name],
+                            price: item.price
+                        });
+                    }
+                } else if (baselineMap.get(item.name) !== item.price) {
+                    priceDifferences.push({
+                        item: item.name,
+                        screen: screen.name,
+                        baseline: baselineMap.get(item.name),
+                        current: item.price
+                    });
+                }
+            });
+        });
+
+        // Find missing items
         baselineMap.forEach((baselinePrice, itemName) => {
-            if (!currentMap.has(itemName)) {
+            if (!currentScreens.some(screen => 
+                screen.items.some(item => item.name === itemName)
+            )) {
                 missing.push(itemName);
-            } else if (currentMap.get(itemName) !== baselinePrice) {
-                priceDifferences.push({
-                    item: itemName,
-                    baseline: baselinePrice,
-                    current: currentMap.get(itemName)
-                });
             }
         });
 
-        // Find extra items
-        currentMap.forEach((_, itemName) => {
-            if (!baselineMap.has(itemName)) {
-                extra.push(itemName);
-            }
-        });
-
-        return { missing, extra, priceDifferences };
+        return { 
+            missing, 
+            extra: Array.from(extra.entries()).map(([name, data]) => ({
+                name,
+                price: data.price,
+                screens: data.screens
+            })), 
+            priceDifferences 
+        };
     };
 
     return (
@@ -80,7 +106,7 @@ const OutletComparison = ({ venue, baselineVenue }) => {
 
                         const comparison = compareMenus(
                             baselineCategory.standardItems,
-                            analysis.standardItems || []
+                            analysis.screens || []
                         );
 
                         const hasDiscrepancies = 
@@ -110,7 +136,12 @@ const OutletComparison = ({ venue, baselineVenue }) => {
                                                 <p className="font-medium">Extra Items:</p>
                                                 <ul className="list-disc ml-6">
                                                     {comparison.extra.map((item, idx) => (
-                                                        <li key={idx}>{item}</li>
+                                                        <li key={idx} className="mb-2">
+                                                            <span className="font-medium">{item.name}</span> (${item.price})
+                                                            <div className="text-sm text-gray-600 mt-1">
+                                                                Found on: {item.screens.join(', ')}
+                                                            </div>
+                                                        </li>
                                                     ))}
                                                 </ul>
                                             </div>
@@ -120,8 +151,13 @@ const OutletComparison = ({ venue, baselineVenue }) => {
                                                 <p className="font-medium">Price Differences:</p>
                                                 <ul className="list-disc ml-6">
                                                     {comparison.priceDifferences.map((diff, idx) => (
-                                                        <li key={idx}>
-                                                            {diff.item}: ${diff.baseline} → ${diff.current}
+                                                        <li key={idx} className="mb-2">
+                                                            <span className="font-medium">{diff.item}</span>
+                                                            <div className="text-sm">
+                                                                Screen: {diff.screen}
+                                                                <br />
+                                                                Price: ${diff.baseline} → ${diff.current}
+                                                            </div>
                                                         </li>
                                                     ))}
                                                 </ul>

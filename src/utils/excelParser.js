@@ -2,7 +2,7 @@
 import * as XLSX from 'xlsx';
 import _ from 'lodash';
 
-const parseExcelFile = async (file) => {
+export const parseExcelFile = async (file) => {
     const workbook = XLSX.read(file, {
         cellStyles: true,
         cellFormulas: true,
@@ -116,7 +116,7 @@ const parseExcelFile = async (file) => {
     return outlets;
 };
 
-const analyzeVenues = (venues) => {
+export const analyzeVenues = (venues) => {
     return venues.map(venue => {
         // Group screens by category
         const screensByCategory = _.groupBy(venue.screens, 'category');
@@ -139,57 +139,15 @@ const analyzeVenues = (venues) => {
 const analyzeScreenGroup = (screens) => {
     if (!screens || screens.length === 0) return null;
 
-    const standardPattern = findStandardPattern(screens);
-    if (!standardPattern) return null;
-
-    const matching = screens.filter(screen => 
-        isMatchingPattern(screen.items, standardPattern)
-    );
-
-    const discrepancies = screens.filter(screen => 
-        !isMatchingPattern(screen.items, standardPattern)
-    ).map(screen => ({
-        screen: screen.name,
-        differences: findDifferences(standardPattern, screen.items)
-    }));
+    // Combine all items from all screens
+    const allItems = screens.reduce((acc, screen) => {
+        return [...acc, ...screen.items];
+    }, []);
 
     return {
         total: screens.length,
-        standardItems: standardPattern,
-        matching: matching.map(s => ({ name: s.name })),
-        discrepancies
-    };
-};
-
-const findStandardPattern = (screens) => {
-    // Find the most common menu pattern
-    const patterns = screens.map(screen => ({
-        items: screen.items,
-        count: 1
-    }));
-
-    return _.maxBy(patterns, 'count')?.items || null;
-};
-
-const isMatchingPattern = (items1, items2) => {
-    if (!items1 || !items2) return false;
-    if (items1.length !== items2.length) return false;
-    
-    return items1.every((item, index) => 
-        item.name === items2[index].name && 
-        item.price === items2[index].price
-    );
-};
-
-const findDifferences = (standard, actual) => {
-    if (!standard || !actual) return { missing: [], extra: [] };
-
-    const standardNames = standard.map(item => `${item.name} ($${item.price})`);
-    const actualNames = actual.map(item => `${item.name} ($${item.price})`);
-
-    return {
-        missing: standardNames.filter(item => !actualNames.includes(item)),
-        extra: actualNames.filter(item => !standardNames.includes(item))
+        standardItems: allItems,
+        screens: screens
     };
 };
 
