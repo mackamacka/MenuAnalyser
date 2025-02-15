@@ -1,36 +1,58 @@
 // src/components/AnalysisResults.jsx
 import React, { useState } from 'react';
 
-const ScreenTypeAnalysis = ({ type, analysis }) => {
+const MenuCategory = ({ category, analysis }) => {
     if (!analysis) return null;
 
     return (
         <div className="mt-4 bg-white rounded-lg p-4 border">
-            <h4 className="text-lg font-medium mb-2">{type} Screens</h4>
-            <div className="space-y-2">
-                <p>Total Screens: {analysis.total}</p>
-                
-                {analysis.matching.length > 0 && (
-                    <div className="mt-4">
-                        <h5 className="text-green-600 font-medium">Standard Layout ({analysis.matching.length} screens):</h5>
-                        <ul className="list-disc pl-5 mt-2">
-                            {analysis.matching.map((screen, idx) => (
-                                <li key={idx}>{screen.name}</li>
-                            ))}
-                        </ul>
+            <h4 className="text-lg font-medium mb-2">{category}</h4>
+            
+            {/* Standard Menu Items */}
+            {analysis.items && analysis.items.length > 0 && (
+                <div className="mb-4">
+                    <h5 className="font-medium">Standard Menu:</h5>
+                    <div className="bg-gray-50 p-3 rounded mt-2">
+                        {analysis.items.map((item, idx) => (
+                            <div key={idx} className="flex justify-between py-1">
+                                <span>{item.name}</span>
+                                <span>${item.price}</span>
+                            </div>
+                        ))}
                     </div>
-                )}
+                </div>
+            )}
 
-                {analysis.discrepancies.length > 0 && (
-                    <div className="mt-4">
-                        <h5 className="text-red-600 font-medium">Discrepancies Found ({analysis.discrepancies.length} screens):</h5>
+            {/* Matching Screens */}
+            {analysis.matching && analysis.matching.length > 0 && (
+                <div className="mb-4">
+                    <h5 className="text-green-600 font-medium">
+                        Screens Following Standard Layout ({analysis.matching.length}):
+                    </h5>
+                    <div className="mt-2 space-y-1">
+                        {analysis.matching.map((screen, idx) => (
+                            <div key={idx} className="bg-green-50 p-2 rounded">
+                                {screen.name}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Discrepancies */}
+            {analysis.discrepancies && analysis.discrepancies.length > 0 && (
+                <div>
+                    <h5 className="text-red-600 font-medium">
+                        Screens with Different Layout ({analysis.discrepancies.length}):
+                    </h5>
+                    <div className="mt-2 space-y-2">
                         {analysis.discrepancies.map((disc, idx) => (
-                            <div key={idx} className="mt-2 pl-4 border-l-2 border-red-200">
+                            <div key={idx} className="bg-red-50 p-3 rounded">
                                 <p className="font-medium">{disc.screen}</p>
                                 {disc.differences.missing.length > 0 && (
-                                    <div className="mt-1">
+                                    <div className="mt-2">
                                         <p className="text-sm text-gray-600">Missing Items:</p>
-                                        <ul className="list-disc pl-5 text-sm">
+                                        <ul className="list-disc ml-5 text-sm">
                                             {disc.differences.missing.map((item, i) => (
                                                 <li key={i}>{item}</li>
                                             ))}
@@ -38,9 +60,9 @@ const ScreenTypeAnalysis = ({ type, analysis }) => {
                                     </div>
                                 )}
                                 {disc.differences.extra.length > 0 && (
-                                    <div className="mt-1">
+                                    <div className="mt-2">
                                         <p className="text-sm text-gray-600">Extra Items:</p>
-                                        <ul className="list-disc pl-5 text-sm">
+                                        <ul className="list-disc ml-5 text-sm">
                                             {disc.differences.extra.map((item, i) => (
                                                 <li key={i}>{item}</li>
                                             ))}
@@ -50,8 +72,8 @@ const ScreenTypeAnalysis = ({ type, analysis }) => {
                             </div>
                         ))}
                     </div>
-                )}
-            </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -74,11 +96,15 @@ const VenueAnalysis = ({ venue }) => {
                 </button>
             </div>
 
-            {isExpanded && (
+            {isExpanded && venue.categories && (
                 <div className="mt-4 space-y-4">
-                    <ScreenTypeAnalysis type="Operational" analysis={venue.screenAnalysis.operational} />
-                    <ScreenTypeAnalysis type="Menu" analysis={venue.screenAnalysis.menu} />
-                    <ScreenTypeAnalysis type="Rotating" analysis={venue.screenAnalysis.rotating} />
+                    {Object.entries(venue.categories).map(([category, analysis]) => (
+                        analysis && <MenuCategory 
+                            key={category} 
+                            category={category} 
+                            analysis={analysis}
+                        />
+                    ))}
                 </div>
             )}
         </div>
