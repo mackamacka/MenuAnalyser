@@ -1,6 +1,6 @@
 // src/components/MenuAnalyzer.jsx
 import React, { useState } from 'react';
-import { parseExcelFile, analyzeMenus } from '../utils/excelParser';
+import { parseExcelFile, analyzeVenues } from '../utils/excelParser';
 import AnalysisResults from './AnalysisResults';
 
 const MenuAnalyzer = () => {
@@ -23,8 +23,8 @@ const MenuAnalyzer = () => {
       reader.onload = async (e) => {
         try {
           const data = new Uint8Array(e.target.result);
-          const menusByCategory = await parseExcelFile(data);
-          const results = analyzeMenus(menusByCategory);
+          const venues = await parseExcelFile(data);
+          const results = analyzeVenues(venues);
           setAnalysis(results);
         } catch (error) {
           console.error('Error processing file:', error);
