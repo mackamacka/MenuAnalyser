@@ -2,10 +2,29 @@
 import * as XLSX from 'xlsx';
 import _ from 'lodash';
 
+const categorizeScreen = (screenData) => {
+  // Look at the items in the screen to determine its category
+  const items = screenData.map(item => item.item.toLowerCase());
+  
+  if (items.some(item => 
+    item.includes('coffee') || 
+    item.includes('latte') || 
+    item.includes('cappuccino'))) {
+    return 'COFFEE';
+  }
+  
+  if (items.some(item => 
+    item.includes('beer') || 
+    item.includes('wine') || 
+    item.includes('spirits'))) {
+    return 'BAR';
+  }
+  
+  return 'FOOD'; // Default category
+};
+
 export const parseExcelFile = async (file) => {
   try {
-    console.log('Starting Excel parsing...');
-    
     const workbook = XLSX.read(file, {
       cellStyles: true,
       cellFormulas: true,
@@ -13,35 +32,34 @@ export const parseExcelFile = async (file) => {
       cellNF: true,
       sheetStubs: true
     });
-    
-    console.log('Workbook read successfully');
-    console.log('Available sheets:', workbook.SheetNames);
-
-    if (workbook.SheetNames.length === 0) {
-      throw new Error('No sheets found in the workbook');
-    }
 
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    console.log('Sheet range:', sheet['!ref']);
-
     const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
-    console.log('Rows extracted:', data.length);
 
-    const screens = {};
+    const categorizedScreens = {
+      FOOD: {},
+      COFFEE: {},
+      BAR: {}
+    };
+
     let currentScreen = null;
+    let currentItems = [];
 
     data.forEach((row, rowIndex) => {
-      if (!row || !Array.isArray(row)) {
-        console.log(`Skipping invalid row at index ${rowIndex}`);
-        return;
-      }
+      if (!row || !Array.isArray(row)) return;
 
       if (row[1] && row[1].toString().toLowerCase().includes('screen')) {
+        // If we were collecting items for a previous screen, categorize and save it
+        if (currentScreen && currentItems.length > 0) {
+          const category = categorizeScreen(currentItems);
+          categorizedScreens[category][currentScreen] = currentItems;
+        }
+        
+        // Start new screen
         currentScreen = row[1].trim();
-        screens[currentScreen] = [];
-        console.log(`Found screen: ${currentScreen}`);
+        currentItems = [];
       } else if (currentScreen && row[1]) {
-        screens[currentScreen].push({
+        currentItems.push({
           item: row[1].trim(),
           price: row[2],
           rowIndex
@@ -49,78 +67,211 @@ export const parseExcelFile = async (file) => {
       }
     });
 
-    console.log('Screens extracted:', Object.keys(screens));
-    return screens;
+    // Don't forget to process the last screen
+    if (currentScreen && currentItems.length > 0) {
+      const category = categorizeScreen(currentItems);
+      categorizedScreens[category][currentScreen] = currentItems;
+    }
+
+    return categorizedScreens;
   } catch (error) {
-    console.error('Excel parsing error:', {
-      message: error.message,
-      stack: error.stack,
-      type: error.name
-    });
+    console.error('Excel parsing error:', error);
     throw new Error(`Excel parsing failed: ${error.message}`);
   }
 };
 
-export const findDiscrepancies = (screens) => {
+export const findDiscrepancies = (categorizedScreens) => {
   try {
-    if (!screens || Object.keys(screens).length === 0) {
-      throw new Error('No screen data provided');
-    }
+    const results = {};
 
-    // Create layout patterns with better error handling
-    const layoutPatterns = Object.entries(screens).map(([screenName, items]) => ({
-      screenName,
-      pattern: items.map(item => `${item.item}-${item.price}`).join('|')
-    }));
+    // Analyze each category separately
+    for (const [category, screens] of Object.entries(categorizedScreens)) {
+      const layoutPatterns = Object.entries(screens).map(([screenName, items]) => ({
+        screenName,
+        pattern: items.map(item => `${item.item}-${item.price}`).join('|')
+      }));
 
-    console.log('Layout patterns created:', layoutPatterns.length);
+      if (layoutPatterns.length === 0) continue;
 
-    // Find the most common pattern
-    const patternCounts = _.countBy(layoutPatterns, 'pattern');
-    const mostCommonPattern = _.maxBy(Object.entries(patternCounts), ([, count]) => count)?.[0];
+      // Find the most common pattern in this category
+      const patternCounts = _.countBy(layoutPatterns, 'pattern');
+      const mostCommonPattern = _.maxBy(Object.entries(patternCounts), ([, count]) => count)?.[0];
 
-    if (!mostCommonPattern) {
-      throw new Error('Could not determine a standard layout pattern');
-    }
+      if (!mostCommonPattern) continue;
 
-    console.log('Standard layout identified');
-
-    // Find screens that don't match the most common pattern
-    const discrepancies = layoutPatterns
-      .filter(({ pattern }) => pattern !== mostCommonPattern)
-      .map(({ screenName, pattern }) => {
-        const currentItems = pattern.split('|');
-        const standardItems = mostCommonPattern.split('|');
-        
-        const differences = [];
-        const maxLength = Math.max(currentItems.length, standardItems.length);
-        
-        for (let i = 0; i < maxLength; i++) {
-          if (currentItems[i] !== standardItems[i]) {
-            differences.push({
-              expected: standardItems[i] || 'missing',
-              found: currentItems[i] || 'missing'
-            });
+      // Find discrepancies within this category
+      const discrepancies = layoutPatterns
+        .filter(({ pattern }) => pattern !== mostCommonPattern)
+        .map(({ screenName, pattern }) => {
+          const currentItems = pattern.split('|');
+          const standardItems = mostCommonPattern.split('|');
+          
+          const differences = [];
+          const maxLength = Math.max(currentItems.length, standardItems.length);
+          
+          for (let i = 0; i < maxLength; i++) {
+            if (currentItems[i] !== standardItems[i]) {
+              differences.push({
+                expected: standardItems[i] || 'missing',
+                found: currentItems[i] || 'missing'
+              });
+            }
           }
-        }
 
-        return {
-          screen: screenName,
-          differences
-        };
-      });
+          return {
+            screen: screenName,
+            differences
+          };
+        });
 
-    return {
-      totalScreens: Object.keys(screens).length,
-      standardPattern: mostCommonPattern,
-      discrepancies
-    };
+      results[category] = {
+        totalScreens: Object.keys(screens).length,
+        standardPattern: mostCommonPattern,
+        discrepancies
+      };
+    }
+
+    return results;
   } catch (error) {
-    console.error('Discrepancy analysis error:', {
-      message: error.message,
-      stack: error.stack,
-      type: error.name
+    console.error('Discrepancy analysis error:', error);
+    throw new Error(`Analysis failed: ${error.message}`);
+  }
+};// src/utils/excelParser.js
+import * as XLSX from 'xlsx';
+import _ from 'lodash';
+
+const categorizeScreen = (screenData) => {
+  // Look at the items in the screen to determine its category
+  const items = screenData.map(item => item.item.toLowerCase());
+  
+  if (items.some(item => 
+    item.includes('coffee') || 
+    item.includes('latte') || 
+    item.includes('cappuccino'))) {
+    return 'COFFEE';
+  }
+  
+  if (items.some(item => 
+    item.includes('beer') || 
+    item.includes('wine') || 
+    item.includes('spirits'))) {
+    return 'BAR';
+  }
+  
+  return 'FOOD'; // Default category
+};
+
+export const parseExcelFile = async (file) => {
+  try {
+    const workbook = XLSX.read(file, {
+      cellStyles: true,
+      cellFormulas: true,
+      cellDates: true,
+      cellNF: true,
+      sheetStubs: true
     });
+
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+
+    const categorizedScreens = {
+      FOOD: {},
+      COFFEE: {},
+      BAR: {}
+    };
+
+    let currentScreen = null;
+    let currentItems = [];
+
+    data.forEach((row, rowIndex) => {
+      if (!row || !Array.isArray(row)) return;
+
+      if (row[1] && row[1].toString().toLowerCase().includes('screen')) {
+        // If we were collecting items for a previous screen, categorize and save it
+        if (currentScreen && currentItems.length > 0) {
+          const category = categorizeScreen(currentItems);
+          categorizedScreens[category][currentScreen] = currentItems;
+        }
+        
+        // Start new screen
+        currentScreen = row[1].trim();
+        currentItems = [];
+      } else if (currentScreen && row[1]) {
+        currentItems.push({
+          item: row[1].trim(),
+          price: row[2],
+          rowIndex
+        });
+      }
+    });
+
+    // Don't forget to process the last screen
+    if (currentScreen && currentItems.length > 0) {
+      const category = categorizeScreen(currentItems);
+      categorizedScreens[category][currentScreen] = currentItems;
+    }
+
+    return categorizedScreens;
+  } catch (error) {
+    console.error('Excel parsing error:', error);
+    throw new Error(`Excel parsing failed: ${error.message}`);
+  }
+};
+
+export const findDiscrepancies = (categorizedScreens) => {
+  try {
+    const results = {};
+
+    // Analyze each category separately
+    for (const [category, screens] of Object.entries(categorizedScreens)) {
+      const layoutPatterns = Object.entries(screens).map(([screenName, items]) => ({
+        screenName,
+        pattern: items.map(item => `${item.item}-${item.price}`).join('|')
+      }));
+
+      if (layoutPatterns.length === 0) continue;
+
+      // Find the most common pattern in this category
+      const patternCounts = _.countBy(layoutPatterns, 'pattern');
+      const mostCommonPattern = _.maxBy(Object.entries(patternCounts), ([, count]) => count)?.[0];
+
+      if (!mostCommonPattern) continue;
+
+      // Find discrepancies within this category
+      const discrepancies = layoutPatterns
+        .filter(({ pattern }) => pattern !== mostCommonPattern)
+        .map(({ screenName, pattern }) => {
+          const currentItems = pattern.split('|');
+          const standardItems = mostCommonPattern.split('|');
+          
+          const differences = [];
+          const maxLength = Math.max(currentItems.length, standardItems.length);
+          
+          for (let i = 0; i < maxLength; i++) {
+            if (currentItems[i] !== standardItems[i]) {
+              differences.push({
+                expected: standardItems[i] || 'missing',
+                found: currentItems[i] || 'missing'
+              });
+            }
+          }
+
+          return {
+            screen: screenName,
+            differences
+          };
+        });
+
+      results[category] = {
+        totalScreens: Object.keys(screens).length,
+        standardPattern: mostCommonPattern,
+        discrepancies
+      };
+    }
+
+    return results;
+  } catch (error) {
+    console.error('Discrepancy analysis error:', error);
     throw new Error(`Analysis failed: ${error.message}`);
   }
 };
